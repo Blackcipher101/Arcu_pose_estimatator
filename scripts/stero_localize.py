@@ -41,6 +41,8 @@ def localize(ros_data,info_L):
     corners, ids, rejected_img_points = cv.aruco.detectMarkers(gray, arucoDict,parameters=arucoParams,
         cameraMatrix=callib_mat,
         distCoeff=d)
+    tfBuffer = tf2_ros.Buffer()
+    listener = tf2_ros.TransformListener(tfBuffer)
     """ broadcaster = tf2_ros.StaticTransformBroadcaster()
     static_transformStamped = geometry_msgs.msg.TransformStamped()
 
@@ -83,6 +85,7 @@ def localize(ros_data,info_L):
 
         tfm = tf2_msgs.msg.TFMessage([t])
         pub.publish(tfm)
+        trans = tfBuffer.lookup_transform("odom", "marker"+str(ids[i][0]), rospy.Time())
         cv.aruco.drawDetectedMarkers(image, corners)
         cv.aruco.drawAxis(image, callib_mat,d, rvec, tvec, 0.01)
         
