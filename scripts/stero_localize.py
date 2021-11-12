@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 from numpy.lib.type_check import imag
 import rospy
 import message_filters
@@ -11,14 +11,15 @@ import tf_conversions
 
 import tf2_ros
 import geometry_msgs.msg
-from sensor_msgs.msg import CompressedImage , CameraInfo
+from sensor_msgs.msg import Image , CameraInfo
 from cv_bridge import CvBridge
 from utils import ARUCO_DICT, aruco_display
 pub = None
+error=None
 def localize(ros_data,info_L):
     global pub
-    np_arr = np.fromstring(ros_data.data, np.uint8)
-    image = cv.imdecode(np_arr, -1)
+    bridge = CvBridge()
+    image = bridge.imgmsg_to_cv2(ros_data, "8UC3")
     #w=info_L.width
     a= np.array(info_L.K)
     callib_mat=np.reshape(a, (-1, 3))
@@ -62,37 +63,50 @@ def localize(ros_data,info_L):
 
     broadcaster.sendTransform(static_transformStamped) """
     #br = tf2_ros.TransformBroadcaster()
-    makerSize=0.2
+    makerSize=0.035
+    rate = rospy.Rate(10.0)
+    global error
     for i in range(len(corners)):
         center_xL=(corners[i][0][0][0] + corners[i][0][2][0]) //2
         center_y=(corners[i][0][1][1] + corners[i][0][3][1]) //2
         rvec, tvec, markerPoints = cv.aruco.estimatePoseSingleMarkers(corners[i],makerSize , callib_mat,d)
-        print("pose with respect to camera tralatation ",ids[i])
-        print(tvec[0][0][0])
+        #print("pose with respect to camera tralatation ",ids[i])
+        #print(tvec[0][0][0])
         t = geometry_msgs.msg.TransformStamped()
 
         t.header.stamp = rospy.Time.now()
         t.header.frame_id = "IMX219_left_link"
         t.child_frame_id = "marker"+str(ids[i][0])
-        t.transform.translation.x = tvec[0][0][0]
+        t.transform.translation.z = tvec[0][0][0]
         t.transform.translation.y = tvec[0][0][1]
-        t.transform.translation.z = tvec[0][0][2]
+        t.transform.translation.x = tvec[0][0][2]
         q = tf_conversions.transformations.quaternion_from_euler(rvec[0][0][0], rvec[0][0][1], rvec[0][0][1])
-        t.transform.rotation.x = q[0]
-        t.transform.rotation.y = q[1]
-        t.transform.rotation.z = q[2]
-        t.transform.rotation.w = q[3]
-
+        t.transform.rotation.x =q[0]
+        t.transform.rotation.y =q[1]
+        t.transform.rotation.z =q[2]
+        t.transform.rotation.w =q[3]
+        cv.putText(image, str(error),(10,10), cv.FONT_HERSHEY_SIMPLEX,
+                                0.5, (255, 0, 0), 2)
         tfm = tf2_msgs.msg.TFMessage([t])
         pub.publish(tfm)
-        trans = tfBuffer.lookup_transform("odom", "marker"+str(ids[i][0]), rospy.Time())
-        cv.aruco.drawDetectedMarkers(image, corners)
+        try:
+            trans = tfBuffer.lookup_transform('base_link', 'marker3', rospy.Time())
+        except (tf2_ros.LookupException, tf2_ros.ConnectivityException, tf2_ros.ExtrapolationException):
+            rate.sleep()
+            continue
+        error=trans.transform.translation.x-1.5
+
         cv.aruco.drawAxis(image, callib_mat,d, rvec, tvec, 0.01)
-        
+        print("Detected")
+        print(trans.transform.translation.x)
+        print("error")
+        print(error)
         #print(angleL)
         #print(angleR)
-        
-        
+    try:
+        image=aruco_display(corners, ids, rejected_img_points, image)
+    except:
+        pass
         
 
         
@@ -100,7 +114,7 @@ def localize(ros_data,info_L):
     cv.imshow('L',image) #debug output
     #cv.imshow('R',detected_markersR)
     #print(camera_info)
-    cv.waitKey(20)
+    cv.waitKey(10)
     
 
 
@@ -130,7 +144,7 @@ def talker():
     rospy.init_node('listener', anonymous=True)
 
     global pub
-    image_sub = message_filters.Subscriber('/camera1/compressed', CompressedImage)
+    image_sub = message_filters.Subscriber('/camera1/image_raw', Image)
     info_sub = message_filters.Subscriber('/camera1/camera_info', CameraInfo)
     pub=rospy.Publisher("/tf", tf2_msgs.msg.TFMessage, queue_size=1)
 
