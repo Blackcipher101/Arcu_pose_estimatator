@@ -63,7 +63,7 @@ def localize(ros_data,info_L):
 
     broadcaster.sendTransform(static_transformStamped) """
     #br = tf2_ros.TransformBroadcaster()
-    makerSize=0.035
+    makerSize=0.037
     rate = rospy.Rate(10.0)
     global error
     for i in range(len(corners)):
@@ -85,28 +85,27 @@ def localize(ros_data,info_L):
         t.transform.rotation.y =q[1]
         t.transform.rotation.z =q[2]
         t.transform.rotation.w =q[3]
-        cv.putText(image, str(error),(10,10), cv.FONT_HERSHEY_SIMPLEX,
-                                0.5, (255, 0, 0), 2)
         tfm = tf2_msgs.msg.TFMessage([t])
         pub.publish(tfm)
+        error=tvec[0][0][2]-1.0
+        cv.aruco.drawDetectedMarkers(image,corners)
+        cv.aruco.drawAxis(image, callib_mat,d, rvec, tvec, 0.01)
+        image=aruco_display(corners,ids,rejected_img_points,image,tvec[0][0][2],                            error)
+        error=tvec[0][0][2]-1.0
+        print("Detected")
+        print(tvec[0][0][2])
+        print("error")
+        print(error)
         try:
             trans = tfBuffer.lookup_transform('base_link', 'marker3', rospy.Time())
         except (tf2_ros.LookupException, tf2_ros.ConnectivityException, tf2_ros.ExtrapolationException):
             rate.sleep()
             continue
-        error=trans.transform.translation.x-1.5
-
-        cv.aruco.drawAxis(image, callib_mat,d, rvec, tvec, 0.01)
-        print("Detected")
-        print(trans.transform.translation.x)
-        print("error")
-        print(error)
         #print(angleL)
         #print(angleR)
-    try:
-        image=aruco_display(corners, ids, rejected_img_points, image)
-    except:
-        pass
+
+    
+        
         
 
         
